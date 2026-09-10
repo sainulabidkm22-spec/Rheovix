@@ -43,7 +43,6 @@ Jinja2==3.1.6
 joblib==1.5.3
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
-kaleido==0.2.1
 kiwisolver==1.4.9
 lazy_loader==0.4
 llvmlite==0.46.0
@@ -66,7 +65,7 @@ pillow==11.3.0
 Pint==0.25.2
 platformdirs==4.5.1
 playwright==1.62.0
-plotly==5.24.1
+plotly==7.0.0
 pluggy==1.6.0
 proglog==0.1.12
 prompt_toolkit==3.0.52
@@ -82,7 +81,7 @@ pyee==13.0.1
 pyfiglet==1.0.4
 Pygments==2.19.2
 pyparsing==3.3.1
-pyspm==0.3.4
+pyspm==0.6.3
 pytest==9.1.1
 python-bidi==0.6.11
 python-dateutil==2.9.0.post0
@@ -124,7 +123,6 @@ uvicorn==0.52.4
 watchdog==6.0.0
 wcwidth==0.2.14
 websockets==16.1.1
-kaleido==0.2.1
 win32_setctime==1.2.0
 wrapt==2.3.0
 xlrd==2.0.2
