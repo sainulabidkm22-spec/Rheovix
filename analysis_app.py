@@ -1,6 +1,6 @@
 """
-RheoVix — Analysis Suite (with PDF Export)
------------------------------------------
+RheoVix — Analysis Suite (with PDF Export & Unicode-Safe Header)
+----------------------------------------------------------------
 """
 
 import streamlit as st
@@ -33,7 +33,7 @@ from fpdf import FPDF
 class PDFReport(FPDF):
     def header(self):
         self.set_font("helvetica", "B", 15)
-        self.cell(0, 10, "RheoVix — Rheological Analysis Report", 0, 1, "C")
+        self.cell(0, 10, "RheoVix - Rheological Analysis Report", 0, 1, "C")
         self.set_font("helvetica", "I", 9)
         self.cell(0, 5, "Automated Model Fitting & Parameter Summary", 0, 1, "C")
         self.ln(5)
