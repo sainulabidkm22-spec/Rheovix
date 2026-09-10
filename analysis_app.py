@@ -643,6 +643,57 @@ def render_analysis_suite():
             plot_ymin = st.number_input("Plot Min Viscosity (Y-axis)", value=def_ymin, format="%.4g", key="plot_ymin_input")
             plot_ymax = st.number_input("Plot Max Viscosity (Y-axis)", value=def_ymax, format="%.4g", key="plot_ymax_input")
 
+        # -----------------------------------------------------------------------
+        # Publication Export Settings (true physical size @ true DPI)
+        # -----------------------------------------------------------------------
+        # NOTE on how this actually works: Kaleido/Plotly render a figure using
+        # fig.layout.width / fig.layout.height as CSS pixels, where 1 inch of
+        # *printed* figure is conventionally 96 CSS px (this is the standard
+        # "logical" pixel density browsers/Chromium use — NOT the same as the
+        # exported raster's DPI). To get a raster whose pixel dimensions equal
+        # "target physical size (in) x target DPI" while keeping fonts/lines/
+        # markers at the correct *relative* size for that physical size, you:
+        #   1) set the figure's layout width/height in CSS px = size_in * 96
+        #   2) export with `scale = target_dpi / 96`
+        # `to_image(scale=...)` multiplies the whole raster (including text and
+        # line widths) proportionally, so nothing looks tiny or oversized —
+        # it just becomes a higher-resolution version of the *same* figure.
+        CSS_PX_PER_INCH = 96
+
+        JOURNAL_PRESETS_IN = {
+            "Single column (3.3 in / 85 mm)": (3.3, 2.5),
+            "1.5 column (4.5 in / 114 mm)": (4.5, 3.4),
+            "Double column / full page (7.0 in / 178 mm)": (7.0, 4.5),
+            "Square, e.g. graphical abstract (3.3 in)": (3.3, 3.3),
+            "Custom": None,
+        }
+
+        st.markdown("#### 🖨️ Publication Export Settings")
+        st.caption(
+            "These control the PHYSICAL size and true resolution of the downloaded PNGs "
+            "(not the on-screen preview above). Pick a journal column width, or enter your own."
+        )
+        exp_c1, exp_c2, exp_c3, exp_c4 = st.columns(4)
+        with exp_c1:
+            journal_preset = st.selectbox("Journal template", options=list(JOURNAL_PRESETS_IN.keys()), index=0)
+        preset_w, preset_h = JOURNAL_PRESETS_IN.get(journal_preset) or (3.3, 2.5)
+        with exp_c2:
+            fig_width_in = st.number_input("Figure width (in)", min_value=1.0, max_value=20.0, value=preset_w, step=0.1)
+        with exp_c3:
+            fig_height_in = st.number_input("Figure height (in)", min_value=1.0, max_value=20.0, value=preset_h, step=0.1)
+        with exp_c4:
+            export_dpi = st.selectbox("Export DPI", options=[300, 600, 1200], index=1)
+
+        export_scale = export_dpi / CSS_PX_PER_INCH
+        layout_width_px = int(round(fig_width_in * CSS_PX_PER_INCH))
+        layout_height_px = int(round(fig_height_in * CSS_PX_PER_INCH))
+        final_px_w = int(round(fig_width_in * export_dpi))
+        final_px_h = int(round(fig_height_in * export_dpi))
+        st.caption(
+            f"→ PNG downloads below will be **{final_px_w} × {final_px_h} px** "
+            f"= {fig_width_in:.2f} × {fig_height_in:.2f} in at {export_dpi} DPI."
+        )
+
         def apply_publication_layout(fig, title_text, x_title="Shear Rate (1/s)", y_title="Viscosity (Pa·s)", is_grid=False) -> go.Figure:
             def get_strict_decade_ticks_and_bounds(min_val, max_val):
                 if min_val <= 0 or max_val <= 0:
@@ -741,8 +792,8 @@ def render_analysis_suite():
                     borderwidth=1,
                     font=dict(family=font_family, size=max(8, font_size - 2), color="black")
                 ),
-                width=900 if not is_grid else 1000,
-                height=600 if not is_grid else 980,
+                width=layout_width_px if not is_grid else int(round(layout_width_px * 1.11)),
+                height=layout_height_px if not is_grid else int(round(layout_height_px * 1.63)),
                 margin=dict(l=80, r=50, t=110 if not is_grid else 150, b=70)
             )
             return fig
@@ -774,15 +825,18 @@ def render_analysis_suite():
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
                 try:
-                    png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                    png_bytes = fig.to_image(format="png", scale=export_scale)
                     st.download_button(
-                        label="📷 Download Figure as High-Res PNG",
+                        label=f"📷 Download Figure as {export_dpi} DPI PNG",
                         data=png_bytes,
-                        file_name="Rheovix_Figure_All_Samples.png",
+                        file_name=f"Rheovix_Figure_All_Samples_{export_dpi}dpi.png",
                         mime="image/png"
                     )
-                except Exception:
-                    st.caption("💡 *Note: Interactive charts have a built-in camera icon in the top-right corner to save PNGs directly client-side.*")
+                except Exception as e:
+                    st.error(f"PNG export failed: {e}")
+                    st.caption("💡 *This usually means the `kaleido` package isn't installed on the server "
+                               "(it's required for `fig.to_image`). Check requirements.txt. Interactive charts "
+                               "still have a built-in camera icon in the top-right corner for a client-side PNG.*")
             with col_dl2:
                 html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
                 st.download_button(
@@ -833,15 +887,18 @@ def render_analysis_suite():
             safe_sample_name = re.sub(r'[:\\/?*\[\]\s]', '_', chosen_single_sample)
             with col_dl1:
                 try:
-                    png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                    png_bytes = fig.to_image(format="png", scale=export_scale)
                     st.download_button(
-                        label="📷 Download Figure as High-Res PNG",
+                        label=f"📷 Download Figure as {export_dpi} DPI PNG",
                         data=png_bytes,
-                        file_name=f"Rheovix_Figure_{safe_sample_name}.png",
+                        file_name=f"Rheovix_Figure_{safe_sample_name}_{export_dpi}dpi.png",
                         mime="image/png"
                     )
-                except Exception:
-                    st.caption("💡 *Note: Interactive charts have a built-in camera icon in the top-right corner to save PNGs directly client-side.*")
+                except Exception as e:
+                    st.error(f"PNG export failed: {e}")
+                    st.caption("💡 *This usually means the `kaleido` package isn't installed on the server "
+                               "(it's required for `fig.to_image`). Check requirements.txt. Interactive charts "
+                               "still have a built-in camera icon in the top-right corner for a client-side PNG.*")
             with col_dl2:
                 html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
                 st.download_button(
@@ -904,16 +961,19 @@ def render_analysis_suite():
                 col_dl1, col_dl2 = st.columns(2)
                 with col_dl1:
                     try:
-                        png_bytes = fig.to_image(format="png", width=1200, height=1200, scale=2)
+                        png_bytes = fig.to_image(format="png", scale=export_scale)
                         st.download_button(
-                            label=f"📷 Download Grid Page {idx+1} as High-Res PNG",
+                            label=f"📷 Download Grid Page {idx+1} as {export_dpi} DPI PNG",
                             data=png_bytes,
-                            file_name=f"Rheovix_Grid_Page_{idx+1}.png",
+                            file_name=f"Rheovix_Grid_Page_{idx+1}_{export_dpi}dpi.png",
                             mime="image/png",
                             key=f"dl_png_grid_{idx}"
                         )
-                    except Exception:
-                        st.caption("💡 *Note: Interactive charts have a built-in camera icon in the top-right corner to save PNGs directly client-side.*")
+                    except Exception as e:
+                        st.error(f"PNG export failed: {e}")
+                        st.caption("💡 *This usually means the `kaleido` package isn't installed on the server "
+                                   "(it's required for `fig.to_image`). Check requirements.txt. Interactive charts "
+                                   "still have a built-in camera icon in the top-right corner for a client-side PNG.*")
                 with col_dl2:
                     html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
                     st.download_button(
@@ -953,16 +1013,16 @@ def render_analysis_suite():
                     col_c1, col_c2 = st.columns(2)
                     with col_c1:
                         try:
-                            png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                            png_bytes = fig.to_image(format="png", scale=export_scale)
                             st.download_button(
-                                label=f"📷 Download PNG",
+                                label=f"📷 Download {export_dpi} DPI PNG",
                                 data=png_bytes,
-                                file_name=f"Rheovix_Card_{safe_s_name}.png",
+                                file_name=f"Rheovix_Card_{safe_s_name}_{export_dpi}dpi.png",
                                 mime="image/png",
                                 key=f"dl_png_card_{safe_s_name}"
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            st.caption(f"PNG export failed: {e}")
                     with col_c2:
                         html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
                         st.download_button(
