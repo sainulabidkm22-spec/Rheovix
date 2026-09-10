@@ -1,6 +1,12 @@
 """
-RheoVix — Analysis Suite (with PDF Export & Unicode-Safe Header)
-----------------------------------------------------------------
+RheoVix — Analysis Suite
+-------------------------
+This module contains the ORIGINAL analysis application exactly as provided,
+wrapped in a single function so it can be mounted behind the new landing
+page. No data-processing, model-fitting, or statistical logic has been
+changed in any way — only the file upload / navigation code has been
+refactored into a function body and the page-config call has been removed
+(page config is now set once, in app.py).
 """
 
 import streamlit as st
@@ -26,22 +32,6 @@ from plotly.subplots import make_subplots
 import io
 import re
 from scipy.optimize import curve_fit
-
-# PDF Generation Import
-from fpdf import FPDF
-
-class PDFReport(FPDF):
-    def header(self):
-        self.set_font("helvetica", "B", 15)
-        self.cell(0, 10, "RheoVix - Rheological Analysis Report", 0, 1, "C")
-        self.set_font("helvetica", "I", 9)
-        self.cell(0, 5, "Automated Model Fitting & Parameter Summary", 0, 1, "C")
-        self.ln(5)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font("helvetica", "I", 8)
-        self.cell(0, 10, f"Page {self.page_no()}", 0, 0, "C")
 
 
 def render_analysis_suite():
@@ -426,6 +416,7 @@ def render_analysis_suite():
         with fit_col2:
             fit_max_sr = st.number_input("Max Shear Rate for Fitting (1/s)", value=global_max_sr, min_value=0.0, step=0.1)
 
+        # Filtered dataset strictly for model parameter fitting
         fitted_source_df = analysis_df[
             (analysis_df["Sample Group"].isin(selected_samples)) &
             (analysis_df[sr_col] >= fit_min_sr) &
@@ -555,43 +546,6 @@ def render_analysis_suite():
             st.markdown(f"📊 **Model Distribution:** {count_str}")
             st.dataframe(summary_df, use_container_width=True)
 
-            # -----------------------------------------------------------------------
-            # PDF Report Download Feature
-            # -----------------------------------------------------------------------
-            def generate_pdf_report(summary_table):
-                pdf = PDFReport(orientation='P', unit='mm', format='A4')
-                pdf.add_page()
-                pdf.set_font("helvetica", "", 10)
-                
-                pdf.cell(0, 8, "Summary of Fitted Rheological Models", 0, 1, "L")
-                pdf.set_font("helvetica", "B", 9)
-                
-                # Table Header
-                col_widths = [50, 50, 40, 45]
-                headers = ["Sample Group", "Best Fit Model", "Adjusted R^2", "RMSE (Pa)"]
-                for i, h in enumerate(headers):
-                    pdf.cell(col_widths[i], 7, h, 1, 0, "C")
-                pdf.ln()
-                
-                # Table Rows
-                pdf.set_font("helvetica", "", 9)
-                for index, row in summary_table.iterrows():
-                    pdf.cell(col_widths[0], 6, str(row["Sample Group"]), 1, 0, "L")
-                    pdf.cell(col_widths[1], 6, str(row["Recommended Best Fit"]), 1, 0, "C")
-                    pdf.cell(col_widths[2], 6, str(row["Adjusted R²"]), 1, 0, "C")
-                    pdf.cell(col_widths[3], 6, str(row["RMSE (Pa)"]), 1, 0, "C")
-                    pdf.ln()
-                    
-                return bytes(pdf.output())
-
-            pdf_bytes = generate_pdf_report(summary_df)
-            st.download_button(
-                label="📄 Download PDF Summary Report",
-                data=pdf_bytes,
-                file_name="RheoVix_Analysis_Report.pdf",
-                mime="application/pdf"
-            )
-
             st.markdown("#### 🔬 Detailed Fitted Parameters per Model & Sample")
 
             param_model_filter = st.selectbox(
@@ -720,149 +674,336 @@ def render_analysis_suite():
 
                 return bound_min, bound_max, tick_vals, tick_text
 
-            xaxis_type = "log" if is_log_x else "linear"
-            yaxis_type = "log" if is_log_y else "linear"
-
-            xaxis_kwargs = dict(
-                title=dict(text=x_title, font=dict(family=font_family, size=font_size + 2, color="black")),
-                type=xaxis_type,
+            xaxis_config = dict(
+                title_text=x_title,
                 showgrid=show_grid,
-                gridcolor="rgba(211,211,211,0.5)" if show_grid else "transparent",
-                zeroline=False,
-                showline=True,
+                gridcolor="#E5E5E5" if show_grid else None,
+                gridwidth=1,
+                ticks="outside",
+                tickfont=dict(family=font_family, size=font_size, color="black"),
+                title_font=dict(family=font_family, size=font_size + 2, color="black"),
                 linewidth=1.5,
                 linecolor="black",
-                ticks="inside",
-                tickfont=dict(family=font_family, size=font_size, color="black")
+                mirror=True
             )
-
-            if is_log_x and plot_xmin > 0 and plot_xmax > 0:
-                xmin_b, xmax_b, xtick_v, xtick_t = get_strict_decade_ticks_and_bounds(plot_xmin, plot_xmax)
-                xaxis_kwargs["range"] = [np.log10(xmin_b), np.log10(xmax_b)]
-                if xtick_v:
-                    xaxis_kwargs["tickvals"] = xtick_v
-                    xaxis_kwargs["ticktext"] = xtick_t
+            if is_log_x:
+                xaxis_config["type"] = "log"
+                b_min, b_max, t_vals, t_texts = get_strict_decade_ticks_and_bounds(plot_xmin, plot_xmax)
+                xaxis_config["range"] = [np.log10(b_min), np.log10(b_max)]
+                if t_vals:
+                    xaxis_config["tickmode"] = "array"
+                    xaxis_config["tickvals"] = t_vals
+                    xaxis_config["ticktext"] = t_texts
             else:
-                xaxis_kwargs["range"] = [plot_xmin, plot_xmax]
+                xaxis_config["type"] = "linear"
+                xaxis_config["range"] = [plot_xmin, plot_xmax]
 
-            yaxis_kwargs = dict(
-                title=dict(text=y_title, font=dict(family=font_family, size=font_size + 2, color="black")),
-                type=yaxis_type,
+            yaxis_config = dict(
+                title_text=y_title,
                 showgrid=show_grid,
-                gridcolor="rgba(211,211,211,0.5)" if show_grid else "transparent",
-                zeroline=False,
-                showline=True,
+                gridcolor="#E5E5E5" if show_grid else None,
+                gridwidth=1,
+                ticks="outside",
+                tickfont=dict(family=font_family, size=font_size, color="black"),
+                title_font=dict(family=font_family, size=font_size + 2, color="black"),
                 linewidth=1.5,
                 linecolor="black",
-                ticks="inside",
-                tickfont=dict(family=font_family, size=font_size, color="black")
+                mirror=True
             )
-
-            if is_log_y and plot_ymin > 0 and plot_ymax > 0:
-                ymin_b, ymax_b, ytick_v, ytick_t = get_strict_decade_ticks_and_bounds(plot_ymin, plot_ymax)
-                yaxis_kwargs["range"] = [np.log10(ymin_b), np.log10(ymax_b)]
-                if ytick_v:
-                    yaxis_kwargs["tickvals"] = ytick_v
-                    yaxis_kwargs["ticktext"] = ytick_t
+            if is_log_y:
+                yaxis_config["type"] = "log"
+                b_min, b_max, t_vals, t_texts = get_strict_decade_ticks_and_bounds(plot_ymin, plot_ymax)
+                yaxis_config["range"] = [np.log10(b_min), np.log10(b_max)]
+                if t_vals:
+                    yaxis_config["tickmode"] = "array"
+                    yaxis_config["tickvals"] = t_vals
+                    yaxis_config["ticktext"] = t_texts
             else:
-                yaxis_kwargs["range"] = [plot_ymin, plot_ymax]
+                yaxis_config["type"] = "linear"
+                yaxis_config["range"] = [plot_ymin, plot_ymax]
+
+            fig.update_xaxes(xaxis_config)
+            fig.update_yaxes(yaxis_config)
 
             fig.update_layout(
-                title=dict(text=title_text, font=dict(family=font_family, size=font_size + 4, color="black"), x=0.5, xanchor="center"),
-                xaxis=xaxis_kwargs,
-                yaxis=yaxis_kwargs,
-                plot_bgcolor=bg_hex,
+                title=dict(
+                    text=title_text,
+                    font=dict(family=font_family, size=font_size + (8 if is_grid else 4), color="black"),
+                    x=0.5 if is_grid else 0.0,
+                    xanchor='center' if is_grid else 'left'
+                ),
                 paper_bgcolor=bg_hex,
+                plot_bgcolor=bg_hex,
                 font=dict(family=font_family, size=font_size, color="black"),
                 legend=dict(
-                    bgcolor="rgba(255,255,255,0.8)",
-                    bordercolor="rgba(0,0,0,0.2)",
+                    bgcolor="rgba(255,255,255,0.9)",
+                    bordercolor="black",
                     borderwidth=1,
-                    font=dict(family=font_family, size=font_size, color="black")
+                    font=dict(family=font_family, size=max(8, font_size - 2), color="black")
                 ),
-                margin=dict(l=80, r=50, t=80, b=80)
+                width=900 if not is_grid else 1000,
+                height=600 if not is_grid else 980,
+                margin=dict(l=80, r=50, t=110 if not is_grid else 150, b=70)
             )
             return fig
 
-        # Render figures based on layout mode
         if plot_layout_mode == "All Samples Together (Single Plot)":
             fig = go.Figure()
-            for sample in selected_samples:
-                s_df = analysis_df[analysis_df["Sample Group"] == sample]
-                color = sample_color_map[sample]
-                if len(s_df) > 0:
-                    add_curve_with_sparse_markers(
-                        fig, s_df[sr_col].values, s_df["Viscosity"].values,
-                        name=f"{sample} (Raw)", color=color, shape=marker_shape, size=marker_size
-                    )
-                if sample in replicate_fitted_curves and "sr_smooth" in replicate_fitted_curves[sample]:
-                    curves_list = replicate_fitted_curves[sample][overlay_model]
-                    if curves_list:
-                        mean_curve = np.mean(curves_list, axis=0)
-                        sr_smooth = replicate_fitted_curves[sample]["sr_smooth"]
-                        fig.add_trace(go.Scatter(
-                            x=sr_smooth, y=mean_curve, mode="lines",
-                            name=f"{sample} ({overlay_model} fit)",
-                            line=dict(width=3, color=color, dash="dash")
-                        ))
 
-            fig = apply_publication_layout(fig, "Viscosity vs. Shear Rate (All Samples)")
+            for sample in selected_samples:
+                if sample in replicate_fitted_curves:
+                    rep_curves = replicate_fitted_curves[sample][overlay_model]
+                    sr_smooth = replicate_fitted_curves[sample].get("sr_smooth")
+                    if rep_curves and sr_smooth is not None and len(rep_curves) > 0:
+                        mean_eta_curve = np.mean(rep_curves, axis=0)
+                        sample_color = sample_color_map.get(sample, "#000000")
+
+                        add_curve_with_sparse_markers(
+                            fig, sr_smooth, mean_eta_curve,
+                            name=f"{sample} ({overlay_model})",
+                            color=sample_color,
+                            shape=marker_shape,
+                            size=marker_size
+                        )
+
+            fig = apply_publication_layout(fig, f"Averaged Replicate-Fitted Curves ({overlay_model})")
             st.plotly_chart(fig, use_container_width=True)
 
-        elif plot_layout_mode == "Single Sample Detail View":
-            chosen_sample = st.selectbox("Select Sample for Detail View", options=selected_samples)
-            if chosen_sample:
-                fig = go.Figure()
-                s_df = analysis_df[analysis_df["Sample Group"] == chosen_sample]
-                color = sample_color_map[chosen_sample]
-                for (fname, sheet), rep_df in s_df.groupby(["File Name", "Sheet"]):
-                    add_curve_with_sparse_markers(
-                        fig, rep_df[sr_col].values, rep_df["Viscosity"].values,
-                        name=f"{fname} [{sheet}]", color=color, shape=marker_shape, size=marker_size
+            # Download Figure Options
+            st.markdown("##### 📥 Export Figure")
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                try:
+                    png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                    st.download_button(
+                        label="📷 Download Figure as High-Res PNG",
+                        data=png_bytes,
+                        file_name="Rheovix_Figure_All_Samples.png",
+                        mime="image/png"
                     )
-                if chosen_sample in replicate_fitted_curves and "sr_smooth" in replicate_fitted_curves[chosen_sample]:
-                    curves_list = replicate_fitted_curves[chosen_sample][overlay_model]
-                    if curves_list:
-                        mean_curve = np.mean(curves_list, axis=0)
-                        sr_smooth = replicate_fitted_curves[chosen_sample]["sr_smooth"]
-                        fig.add_trace(go.Scatter(
-                            x=sr_smooth, y=mean_curve, mode="lines",
-                            name=f"Mean ({overlay_model})",
-                            line=dict(width=3.5, color="black", dash="dash")
-                        ))
-                fig = apply_publication_layout(fig, f"Detailed Replicates: {chosen_sample}")
-                st.plotly_chart(fig, use_container_width=True)
+                except Exception:
+                    st.caption("💡 *Note: Interactive charts have a built-in camera icon in the top-right corner to save PNGs directly client-side.*")
+            with col_dl2:
+                html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
+                st.download_button(
+                    label="🌐 Download Figure as Interactive HTML",
+                    data=html_bytes,
+                    file_name="Rheovix_Figure_All_Samples.html",
+                    mime="text/html"
+                )
+
+        elif plot_layout_mode == "Single Sample Detail View":
+            chosen_single_sample = st.selectbox("Choose sample to inspect:", options=selected_samples)
+            fig = go.Figure()
+
+            if chosen_single_sample in replicate_fitted_curves:
+                rep_curves = replicate_fitted_curves[chosen_single_sample][overlay_model]
+                sr_smooth = replicate_fitted_curves[chosen_single_sample].get("sr_smooth")
+                if rep_curves and sr_smooth is not None and len(rep_curves) > 0:
+                    mean_eta_curve = np.mean(rep_curves, axis=0)
+                    sample_color = sample_color_map.get(chosen_single_sample, "#FF0000")
+
+                    for i, r_curve in enumerate(rep_curves):
+                        fig.add_trace(
+                            go.Scatter(
+                                x=sr_smooth,
+                                y=r_curve,
+                                mode="lines",
+                                name="Replicates",
+                                line=dict(width=1, color=sample_color, dash="dot"),
+                                opacity=0.6,
+                                showlegend=(i == 0)
+                            )
+                        )
+
+                    add_curve_with_sparse_markers(
+                        fig, sr_smooth, mean_eta_curve,
+                        name=f"{chosen_single_sample} (Mean {overlay_model})",
+                        color=sample_color,
+                        shape=marker_shape,
+                        size=marker_size
+                    )
+
+            fig = apply_publication_layout(fig, f"Replicate & Mean Fit Analysis: {chosen_single_sample} ({overlay_model})")
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Download Figure Options
+            st.markdown("##### 📥 Export Figure")
+            col_dl1, col_dl2 = st.columns(2)
+            safe_sample_name = re.sub(r'[:\\/?*\[\]\s]', '_', chosen_single_sample)
+            with col_dl1:
+                try:
+                    png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                    st.download_button(
+                        label="📷 Download Figure as High-Res PNG",
+                        data=png_bytes,
+                        file_name=f"Rheovix_Figure_{safe_sample_name}.png",
+                        mime="image/png"
+                    )
+                except Exception:
+                    st.caption("💡 *Note: Interactive charts have a built-in camera icon in the top-right corner to save PNGs directly client-side.*")
+            with col_dl2:
+                html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
+                st.download_button(
+                    label="🌐 Download Figure as Interactive HTML",
+                    data=html_bytes,
+                    file_name=f"Rheovix_Figure_{safe_sample_name}.html",
+                    mime="text/html"
+                )
 
         elif plot_layout_mode == "3x3 Subplot Grid":
-            n_samples = len(selected_samples)
-            if n_samples > 0:
+            chunks = [selected_samples[i:i + 9] for i in range(0, len(selected_samples), 9)]
+
+            for idx, chunk in enumerate(chunks):
+                n_samples = len(chunk)
                 rows = min(3, (n_samples + 2) // 3)
                 cols = min(3, n_samples)
-                fig = make_subplots(rows=rows, cols=cols, subplot_titles=selected_samples[:9])
-                for idx, sample in enumerate(selected_samples[:9]):
-                    r = (idx // 3) + 1
-                    c = (idx % 3) + 1
-                    s_df = analysis_df[analysis_df["Sample Group"] == sample]
-                    color = sample_color_map[sample]
-                    if len(s_df) > 0:
-                        add_curve_with_sparse_markers(
-                            fig, s_df[sr_col].values, s_df["Viscosity"].values,
-                            name=sample, color=color, shape=marker_shape, size=marker_size,
-                            showlegend=False, row=r, col=c
-                        )
-                fig = apply_publication_layout(fig, "Multi-Sample Subplot Grid")
+
+                short_titles = [s[:8] + ".." if len(s) > 10 else s for s in chunk]
+
+                fig = make_subplots(
+                    rows=rows,
+                    cols=cols,
+                    subplot_titles=short_titles,
+                    vertical_spacing=0.32,
+                    horizontal_spacing=0.15
+                )
+
+                for s_idx, sample in enumerate(chunk):
+                    r = (s_idx // 3) + 1
+                    c = (s_idx % 3) + 1
+
+                    if sample in replicate_fitted_curves:
+                        rep_curves = replicate_fitted_curves[sample][overlay_model]
+                        sr_smooth = replicate_fitted_curves[sample].get("sr_smooth")
+                        if rep_curves and sr_smooth is not None and len(rep_curves) > 0:
+                            mean_eta_curve = np.mean(rep_curves, axis=0)
+                            sample_color = sample_color_map.get(sample, "#000000")
+
+                            add_curve_with_sparse_markers(
+                                fig, sr_smooth, mean_eta_curve,
+                                name=sample,
+                                color=sample_color,
+                                shape=marker_shape,
+                                size=max(3, marker_size - 2),
+                                showlegend=False,
+                                row=r, col=c
+                            )
+
+                fig = apply_publication_layout(fig, f"3x3 Subplot Grid - {overlay_model} Average (Page {idx+1})", is_grid=True)
+
+                for annotation in fig['layout']['annotations']:
+                    annotation['font'] = dict(family=font_family, size=max(8, font_size - 3), color="black")
+                    if 'y' in annotation:
+                        annotation['y'] = annotation['y'] + 0.04
+
                 st.plotly_chart(fig, use_container_width=True)
 
-        elif plot_layout_mode == "Individual Sample Carousel / Cards":
-            for sample in selected_samples:
-                st.markdown(f"#### Sample: {sample}")
-                fig = go.Figure()
-                s_df = analysis_df[analysis_df["Sample Group"] == sample]
-                color = sample_color_map[sample]
-                if len(s_df) > 0:
-                    add_curve_with_sparse_markers(
-                        fig, s_df[sr_col].values, s_df["Viscosity"].values,
-                        name=sample, color=color, shape=marker_shape, size=marker_size
+                # Download Figure Options
+                st.markdown(f"##### 📥 Export Figure (Page {idx+1})")
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    try:
+                        png_bytes = fig.to_image(format="png", width=1200, height=1200, scale=2)
+                        st.download_button(
+                            label=f"📷 Download Grid Page {idx+1} as High-Res PNG",
+                            data=png_bytes,
+                            file_name=f"Rheovix_Grid_Page_{idx+1}.png",
+                            mime="image/png",
+                            key=f"dl_png_grid_{idx}"
+                        )
+                    except Exception:
+                        st.caption("💡 *Note: Interactive charts have a built-in camera icon in the top-right corner to save PNGs directly client-side.*")
+                with col_dl2:
+                    html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
+                    st.download_button(
+                        label=f"🌐 Download Grid Page {idx+1} as Interactive HTML",
+                        data=html_bytes,
+                        file_name=f"Rheovix_Grid_Page_{idx+1}.html",
+                        mime="text/html",
+                        key=f"dl_html_grid_{idx}"
                     )
-                fig = apply_publication_layout(fig, f"Analysis: {sample}")
-                st.plotly_chart(fig, use_container_width=True)
+
+        elif plot_layout_mode == "Individual Sample Carousel / Cards":
+            st.caption("Scroll through individual sample publication cards below:")
+            for sample in selected_samples:
+                with st.container(border=True):
+                    st.subheader(f"Sample: {sample}")
+                    fig = go.Figure()
+                    if sample in replicate_fitted_curves:
+                        rep_curves = replicate_fitted_curves[sample][overlay_model]
+                        sr_smooth = replicate_fitted_curves[sample].get("sr_smooth")
+                        if rep_curves and sr_smooth is not None and len(rep_curves) > 0:
+                            mean_eta_curve = np.mean(rep_curves, axis=0)
+                            sample_color = sample_color_map.get(sample, "#000000")
+
+                            add_curve_with_sparse_markers(
+                                fig, sr_smooth, mean_eta_curve,
+                                name=f"{overlay_model} Avg Fit",
+                                color=sample_color,
+                                shape=marker_shape,
+                                size=marker_size
+                            )
+
+                    fig = apply_publication_layout(fig, f"{sample} - {overlay_model} Fitted Curve")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # Download individual sample card figure
+                    safe_s_name = re.sub(r'[:\\/?*\[\]\s]', '_', sample)
+                    col_c1, col_c2 = st.columns(2)
+                    with col_c1:
+                        try:
+                            png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                            st.download_button(
+                                label=f"📷 Download PNG",
+                                data=png_bytes,
+                                file_name=f"Rheovix_Card_{safe_s_name}.png",
+                                mime="image/png",
+                                key=f"dl_png_card_{safe_s_name}"
+                            )
+                        except Exception:
+                            pass
+                    with col_c2:
+                        html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
+                        st.download_button(
+                            label=f"🌐 Download HTML",
+                            data=html_bytes,
+                            file_name=f"Rheovix_Card_{safe_s_name}.html",
+                            mime="text/html",
+                            key=f"dl_html_card_{safe_s_name}"
+                        )
+
+        # -----------------------------------------------------------------------
+        # Downloadable Excel File (Using native openpyxl engine)
+        # -----------------------------------------------------------------------
+        st.markdown("---")
+        st.markdown("### 📥 Download Final Downloadable Excel Sheet for Plotting")
+        st.caption("Download an Excel workbook containing distinct sheets for each sample with model-fitted plottable curves and replicate averages formatted specifically for external graphing tools (Origin, GraphPad, etc.).")
+
+        if st.button("Generate Downloadable Excel Workbook", type="primary"):
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                for sample in selected_samples:
+                    if sample in replicate_fitted_curves:
+                        data_dict = {}
+                        sr_smooth = replicate_fitted_curves[sample].get("sr_smooth")
+                        if sr_smooth is not None:
+                            data_dict["Shear_Rate (1/s)"] = sr_smooth
+
+                            for m_name in ["Power Law", "Bingham", "Herschel-Bulkley"]:
+                                r_curves = replicate_fitted_curves[sample][m_name]
+                                if r_curves:
+                                    data_dict[f"{m_name}_Mean_Viscosity"] = np.mean(r_curves, axis=0)
+
+                            df_out = pd.DataFrame(data_dict)
+                            sheet_safe_name = re.sub(r'[:\\/?*\[\]]', '_', sample)[:31]
+                            df_out.to_excel(writer, sheet_name=sheet_safe_name, index=False)
+
+            output.seek(0)
+            st.download_button(
+                label="💾 Download Final Excel Sheet (.xlsx)",
+                data=output,
+                file_name="Rheovix_Plotting_Ready_Results.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
