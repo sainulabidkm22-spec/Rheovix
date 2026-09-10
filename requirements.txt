@@ -56,6 +56,7 @@ multidict==6.7.0
 narwhals==2.25.0
 networkx==3.6.1
 numba==0.63.1
+numpy==1.26.4
 openpyxl==3.1.5
 packaging==25.0
 pandas==2.3.3
@@ -64,8 +65,8 @@ patsy==1.0.2
 pillow==11.3.0
 Pint==0.25.2
 platformdirs==4.5.1
-playwright==1.62.0
 plotly==7.0.0
+kaleido==0.2.1
 pluggy==1.6.0
 proglog==0.1.12
 prompt_toolkit==3.0.52
@@ -81,6 +82,7 @@ pyee==13.0.1
 pyfiglet==1.0.4
 Pygments==2.19.2
 pyparsing==3.3.1
+pyspm==0.6.3
 pytest==9.1.1
 python-bidi==0.6.11
 python-dateutil==2.9.0.post0
