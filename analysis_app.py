@@ -741,8 +741,8 @@ def render_analysis_suite():
                     borderwidth=1,
                     font=dict(family=font_family, size=max(8, font_size - 2), color="black")
                 ),
-                width=900 if not is_grid else 1000,
-                height=600 if not is_grid else 980,
+                width=750 if not is_grid else 1000,   # Publication-ready compact width (less wide)
+                height=562 if not is_grid else 850,   # Standard 4:3 aspect ratio
                 margin=dict(l=80, r=50, t=110 if not is_grid else 150, b=70)
             )
             return fig
@@ -774,9 +774,10 @@ def render_analysis_suite():
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
                 try:
-                    png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                    # High resolution export for 600+ DPI
+                    png_bytes = fig.to_image(format="png", width=1500, height=1125, scale=4)
                     st.download_button(
-                        label="📷 Download Figure as High-Res PNG",
+                        label="📷 Download Figure as High-Res PNG (600+ DPI)",
                         data=png_bytes,
                         file_name="Rheovix_Figure_All_Samples.png",
                         mime="image/png"
@@ -833,9 +834,10 @@ def render_analysis_suite():
             safe_sample_name = re.sub(r'[:\\/?*\[\]\s]', '_', chosen_single_sample)
             with col_dl1:
                 try:
-                    png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                    # High resolution export for 600+ DPI
+                    png_bytes = fig.to_image(format="png", width=1500, height=1125, scale=4)
                     st.download_button(
-                        label="📷 Download Figure as High-Res PNG",
+                        label="📷 Download Figure as High-Res PNG (600+ DPI)",
                         data=png_bytes,
                         file_name=f"Rheovix_Figure_{safe_sample_name}.png",
                         mime="image/png"
@@ -904,9 +906,10 @@ def render_analysis_suite():
                 col_dl1, col_dl2 = st.columns(2)
                 with col_dl1:
                     try:
-                        png_bytes = fig.to_image(format="png", width=1200, height=1200, scale=2)
+                        # High resolution export for 600+ DPI
+                        png_bytes = fig.to_image(format="png", width=1800, height=1710, scale=3)
                         st.download_button(
-                            label=f"📷 Download Grid Page {idx+1} as High-Res PNG",
+                            label=f"📷 Download Grid Page {idx+1} as High-Res PNG (600+ DPI)",
                             data=png_bytes,
                             file_name=f"Rheovix_Grid_Page_{idx+1}.png",
                             mime="image/png",
@@ -953,9 +956,10 @@ def render_analysis_suite():
                     col_c1, col_c2 = st.columns(2)
                     with col_c1:
                         try:
-                            png_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                            # High resolution export for 600+ DPI
+                            png_bytes = fig.to_image(format="png", width=1500, height=1125, scale=4)
                             st.download_button(
-                                label=f"📷 Download PNG",
+                                label=f"📷 Download PNG (600+ DPI)",
                                 data=png_bytes,
                                 file_name=f"Rheovix_Card_{safe_s_name}.png",
                                 mime="image/png",
